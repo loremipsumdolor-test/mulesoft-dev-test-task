@@ -3,7 +3,7 @@ sales:
   fileName: "sales.csv"
 
 scheduler:
-  triggerFrequency: "10"
+  triggerFrequency: "3600"
 
 apis:
   restCountries:
