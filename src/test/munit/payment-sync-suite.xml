@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- One suite file, several tests. NOT the full payment_sync_scheduler (no Scheduler/File); only sub-flows with seeded vars + HTTP mocks. -->
+<mule xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+	xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xsi:schemaLocation="
+		http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+		http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+		http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+	<munit:config name="payment-sync-suite" />
+
+	<munit:test name="countries-enrichment-happy-path" description="Mock REST Countries; ES/FR rows get country_name and region" doc:id="munit-countries-happy" ignore="false">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request" doc:name="Mock REST Countries">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="config-ref" whereValue="RestCountries_Request_configuration" />
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="GET alpha by codes" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload mediaType="application/json" value="#[%dw 2.0 output application/json --- readUrl('classpath://munit/rest-countries-alpha-sample.json')]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<munit:set-event>
+				<munit:variables>
+					<munit:variable key="correlationId" value="#['munit-countries']" />
+					<munit:variable key="salesBatchSummary" value="#[%dw 2.0 output application/java --- { rowCount: 2, uniqueCountryCodes: [&quot;ES&quot;, &quot;FR&quot;], uniqueCurrencies: [&quot;EUR&quot;, &quot;USD&quot;] }]" />
+					<munit:variable key="salesRows" value="#[%dw 2.0 output application/java --- [
+						{ sale_id: &quot;S-1&quot;, sale_date: &quot;2025-01-01&quot;, country_code: &quot;ES&quot;, currency: &quot;EUR&quot;, amount_local: 100 },
+						{ sale_id: &quot;S-2&quot;, sale_date: &quot;2025-01-02&quot;, country_code: &quot;FR&quot;, currency: &quot;USD&quot;, amount_local: 200 }
+					]]" />
+				</munit:variables>
+			</munit:set-event>
+			<flow-ref name="countries_data_enrichmentSub_Flow" doc:name="Run countries enrichment" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-equals actual="#[payload[0].country_name]" expected='#["Spain"]' message="ES enriched from mock" doc:id="assert-es-name" />
+			<munit-tools:assert-equals actual="#[payload[1].country_name]" expected='#["France"]' message="FR enriched from mock" doc:id="assert-fr-name" />
+		</munit:validation>
+	</munit:test>
+
+	<munit:test name="enforce-eur-rates-happy-path" description="Mock Frankfurter; EUR row rate 1, USD row uses mocked rate" doc:id="munit-fx-happy" ignore="false">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request" doc:name="Mock Frankfurter">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="config-ref" whereValue="Frankfurter_Request_configuration" />
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="GET v2 rates" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload mediaType="application/json" value="#[%dw 2.0 output application/json --- readUrl('classpath://munit/frankfurter-rates-sample.json')]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<munit:set-event>
+				<munit:variables>
+					<munit:variable key="correlationId" value="#['munit-fx']" />
+					<munit:variable key="salesBatchSummary" value="#[%dw 2.0 output application/java --- { rowCount: 2, uniqueCountryCodes: [&quot;ES&quot;], uniqueCurrencies: [&quot;EUR&quot;, &quot;USD&quot;] }]" />
+					<munit:variable key="salesRows" value="#[%dw 2.0 output application/java --- [
+						{ sale_id: &quot;A&quot;, country_code: &quot;ES&quot;, currency: &quot;EUR&quot;, amount_local: 50, country_name: &quot;Spain&quot;, region: &quot;Europe&quot; },
+						{ sale_id: &quot;B&quot;, country_code: &quot;ES&quot;, currency: &quot;USD&quot;, amount_local: 220, country_name: &quot;Spain&quot;, region: &quot;Europe&quot; }
+					]]" />
+				</munit:variables>
+			</munit:set-event>
+			<flow-ref name="enforce_eur_rates_sub_flow" doc:name="Run EUR rates" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-equals actual="#[payload[0].amount_eur]" expected="#[50]" message="EUR amount_eur (rate 1)" doc:id="assert-eur-amt" />
+			<munit-tools:assert-equals actual="#[payload[1].amount_eur]" expected="#[(220 / 1.1)]" message="USD amount_eur from mocked rate" doc:id="assert-usd-amt" />
+		</munit:validation>
+	</munit:test>
+
+	<munit:test name="countries-enrichment-empty-api-payload" description="Mock REST Countries returns []; country fields null" doc:id="munit-countries-empty" ignore="false">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request" doc:name="Mock REST empty">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="config-ref" whereValue="RestCountries_Request_configuration" />
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="GET alpha by codes" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload mediaType="application/json" value="#[%dw 2.0 output application/json --- readUrl('classpath://munit/rest-countries-empty.json')]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<munit:set-event>
+				<munit:variables>
+					<munit:variable key="correlationId" value="#['munit-empty']" />
+					<munit:variable key="salesBatchSummary" value="#[%dw 2.0 output application/java --- { rowCount: 1, uniqueCountryCodes: [&quot;ES&quot;], uniqueCurrencies: [&quot;EUR&quot;] }]" />
+					<munit:variable key="salesRows" value="#[%dw 2.0 output application/java --- [
+						{ sale_id: &quot;X-1&quot;, country_code: &quot;ES&quot;, currency: &quot;EUR&quot;, amount_local: 10 }
+					]]" />
+				</munit:variables>
+			</munit:set-event>
+			<flow-ref name="countries_data_enrichmentSub_Flow" doc:name="Run countries enrichment empty" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-equals actual="#[payload[0].country_name == null and payload[0].region == null]" expected="#[true]" message="No geo when API returns []" doc:id="assert-null-geo" />
+		</munit:validation>
+	</munit:test>
+
+	<!-- Error / edge path: CSV has unknown country code (ZZ); API returns only ES — ZZ row stays null (like real REST Countries omitting invalid codes) -->
+	<munit:test name="countries-enrichment-unknown-code-not-in-api" description="Partial REST payload; unknown alpha-2 gets null country_name/region" doc:id="munit-countries-unknown" ignore="false">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request" doc:name="Mock REST partial">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="config-ref" whereValue="RestCountries_Request_configuration" />
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="GET alpha by codes" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload mediaType="application/json" value="#[%dw 2.0 output application/json --- readUrl('classpath://munit/rest-countries-es-only.json')]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<munit:set-event>
+				<munit:variables>
+					<munit:variable key="correlationId" value="#['munit-unknown-cc']" />
+					<munit:variable key="salesBatchSummary" value="#[%dw 2.0 output application/java --- { rowCount: 2, uniqueCountryCodes: [&quot;ES&quot;, &quot;ZZ&quot;], uniqueCurrencies: [&quot;EUR&quot;] }]" />
+					<munit:variable key="salesRows" value="#[%dw 2.0 output application/java --- [
+						{ sale_id: &quot;K-1&quot;, country_code: &quot;ES&quot;, currency: &quot;EUR&quot;, amount_local: 1 },
+						{ sale_id: &quot;K-2&quot;, country_code: &quot;ZZ&quot;, currency: &quot;EUR&quot;, amount_local: 2 }
+					]]" />
+				</munit:variables>
+			</munit:set-event>
+			<flow-ref name="countries_data_enrichmentSub_Flow" doc:name="Run countries enrichment unknown code" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-equals actual="#[payload[0].country_name]" expected='#["Spain"]' message="Known code still enriched" doc:id="assert-known-es" />
+			<munit-tools:assert-equals actual="#[payload[1].country_name == null and payload[1].region == null]" expected="#[true]" message="Unknown ZZ not in API payload" doc:id="assert-zz-null" />
+		</munit:validation>
+	</munit:test>
+
+	<!-- Error path: Frankfurter HTTP fails (simulated); on-error-continue leaves empty FX map — non-EUR amounts null -->
+	<munit:test name="enforce-eur-rates-frankfurter-http-error" description="Mock Frankfurter HTTP failure (CONNECTIVITY); on-error-continue clears FX for non-EUR" doc:id="munit-fx-error" ignore="false">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request" doc:name="Mock Frankfurter error">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="config-ref" whereValue="Frankfurter_Request_configuration" />
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="GET v2 rates" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<munit:set-event>
+				<munit:variables>
+					<munit:variable key="correlationId" value="#['munit-fx-503']" />
+					<munit:variable key="salesBatchSummary" value="#[%dw 2.0 output application/java --- { rowCount: 2, uniqueCountryCodes: [&quot;ES&quot;], uniqueCurrencies: [&quot;EUR&quot;, &quot;USD&quot;] }]" />
+					<munit:variable key="salesRows" value="#[%dw 2.0 output application/java --- [
+						{ sale_id: &quot;E1&quot;, country_code: &quot;ES&quot;, currency: &quot;EUR&quot;, amount_local: 10, country_name: &quot;Spain&quot;, region: &quot;Europe&quot; },
+						{ sale_id: &quot;E2&quot;, country_code: &quot;ES&quot;, currency: &quot;USD&quot;, amount_local: 99, country_name: &quot;Spain&quot;, region: &quot;Europe&quot; }
+					]]" />
+				</munit:variables>
+			</munit:set-event>
+			<flow-ref name="enforce_eur_rates_sub_flow" doc:name="Run EUR rates with HTTP error mock" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-equals actual="#[payload[0].amount_eur]" expected="#[10]" message="EUR row survives Frankfurter error" doc:id="assert-amt-eur" />
+			<munit-tools:assert-equals actual="#[payload[1].amount_eur == null]" expected="#[true]" message="USD row has no EUR amount without FX" doc:id="assert-amt-usd-null" />
+		</munit:validation>
+	</munit:test>
+</mule>

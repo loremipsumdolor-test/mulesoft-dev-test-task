@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="countries_data_enrichmentSub_Flow" doc:id="c937a7c4-9714-43e7-a8d0-43a816b49267" >
+		<set-variable value="#[%dw 2.0 output application/java import commaParam, uniqueUpper from modules::SalesBatchKeys --- commaParam(vars.salesBatchSummary.uniqueCountryCodes default [], [])]" variableName="restCountriesCodesParam" doc:name="codes query param" doc:id="d0e1f2a3-b4c5-4678-9012-34567890abcd" />
+		<choice doc:name="Any country codes" doc:id="e1f2a3b4-c5d6-4789-0123-4567890abcde" >
+			<when expression="#[%dw 2.0 import uniqueUpper from modules::SalesBatchKeys --- sizeOf(uniqueUpper(vars.salesBatchSummary.uniqueCountryCodes default [])) &gt; 0]" >
+				<try doc:name="REST Countries call" doc:id="f2a3b4c5-d6e7-4890-1234-567890abcdef" >
+					<logger level="INFO" doc:name="REST Countries URL diagnostics" doc:id="b2c3d4e5-f6a7-4890-b123-456789abcdef" message="#[%dw 2.0 output application/java var qp = { codes: &quot;ES,FR&quot;, fields: &quot;cca2,name,region&quot; } --- &quot;[correlationId=&quot; ++ (vars.correlationId default &quot;n/a&quot;) ++ &quot;] REST Countries | props: host=&apos;&quot; ++ (p(&quot;apis.restCountries.host&quot;) default &quot;&lt;empty&gt;&quot;) ++ &quot;&apos; port=&apos;&quot; ++ (p(&quot;apis.restCountries.port&quot;) default &quot;&lt;empty&gt;&quot;) ++ &quot;&apos; basePath=&apos;&quot; ++ (p(&quot;apis.restCountries.basePath&quot;) default &quot;&lt;empty&gt;&quot;) ++ &quot;&apos; alphaFields=&apos;&quot; ++ (p(&quot;apis.restCountries.alphaFields&quot;) default &quot;&lt;empty&gt;&quot;) ++ &quot;&apos; | codesParam=&apos;&quot; ++ qp.codes ++ &quot;&apos; | queryMap=&quot; ++ write(qp, &quot;application/json&quot;) ++ &quot; | queryString=&quot; ++ (&quot;codes=&quot; ++ (qp.codes as String default &quot;&quot;) ++ &quot;&amp;fields=&quot; ++ (qp.fields as String default &quot;&quot;)) ++ &quot; | effectiveUrl=https://&quot; ++ (p(&quot;apis.restCountries.host&quot;) as String default &quot;&quot;) ++ &quot;:&quot; ++ (p(&quot;apis.restCountries.port&quot;) as String default &quot;&quot;) ++ (p(&quot;apis.restCountries.basePath&quot;) as String default &quot;&quot;) ++ &quot;/alpha?&quot; ++ (&quot;codes=&quot; ++ (qp.codes as String default &quot;&quot;) ++ &quot;&amp;fields=&quot; ++ (qp.fields as String default &quot;&quot;))]" />
+					<http:request doc:name="GET alpha by codes" doc:id="a3b4c5d6-e7f8-4901-2345-67890abcdef0" outputMimeType="application/json" path="/alpha" config-ref="RestCountries_Request_configuration">
+						<http:query-params><![CDATA[#[{ "codes": "ES,FR", "fields": "cca2,name,region" }]]]></http:query-params>
+					</http:request>
+					<set-variable value="#[%dw 2.0 output application/java import upper from dw::core::Strings --- (payload default []) reduce ((item, acc = {}) -&gt; acc ++ { (upper(item.cca2 default &quot;&quot;)): { country_name: item.name.common default null, region: item.region default null } })]" variableName="countryByCode" doc:name="Response to map by cca2" doc:id="b4c5d6e7-f8a9-4012-3456-7890abcdef01" />
+					<error-handler >
+						<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c5d6e7f8-a9b0-4123-4567-890abcdef012" >
+							<logger level="WARN" doc:name="Countries API failed" doc:id="d6e7f8a9-b0c1-4234-5678-90abcdef0123" message="#[%dw 2.0 output application/java var qp = { codes: &quot;ES,FR&quot;, fields: &quot;cca2,name,region&quot; } --- &quot;[correlationId=&quot; ++ (vars.correlationId default &quot;n/a&quot;) ++ &quot;] REST Countries failed | effectiveUrl=https://&quot; ++ (p(&quot;apis.restCountries.host&quot;) as String default &quot;&quot;) ++ &quot;:&quot; ++ (p(&quot;apis.restCountries.port&quot;) as String default &quot;&quot;) ++ (p(&quot;apis.restCountries.basePath&quot;) as String default &quot;&quot;) ++ &quot;/alpha?&quot; ++ (&quot;codes=&quot; ++ (qp.codes as String default &quot;&quot;) ++ &quot;&amp;fields=&quot; ++ (qp.fields as String default &quot;&quot;)) ++ &quot; | queryMap=&quot; ++ write(qp, &quot;application/json&quot;) ++ &quot; | err=&quot; ++ (error.description default &quot;&quot;) ++ &quot; | type=&quot; ++ (error.errorType.namespace default &quot;&quot;) ++ &quot;:&quot; ++ (error.errorType.identifier default &quot;&quot;)]" />
+							<set-variable value="#[{}]" variableName="countryByCode" doc:name="Empty country map" doc:id="e7f8a9b0-c1d2-4345-6789-0abcdef01234" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+			<otherwise >
+				<set-variable value="#[{}]" variableName="countryByCode" doc:name="No codes skip API" doc:id="f8a9b0c1-d2e3-4456-789a-bcdef0123456" />
+			</otherwise>
+		</choice>
+		<set-variable value="#[%dw 2.0 output application/java import upper from dw::core::Strings var rows = vars.salesRows default [] var bm = vars.countryByCode default {} --- rows map ((row) -&gt; row ++ (do { var code = upper(row.country_code default &quot;&quot;) var meta = bm[code] --- if (meta != null) { country_name: meta.country_name, region: meta.region } else { country_name: null, region: null } }))]" variableName="salesRows" doc:name="Merge country into each row" doc:id="a9b0c1d2-e3f4-4567-89ab-cdef01234567" />
+		<set-payload value="#[vars.salesRows]" doc:name="Payload enriched sales" doc:id="b0c1d2e3-f4a5-4678-9abc-def012345678" />
+	</sub-flow>
+</mule>

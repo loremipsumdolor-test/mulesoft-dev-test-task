@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<flow name="payment_sync_scheduler" doc:id="118985f8-e0a9-4f5e-a32e-c879656963c2" >
+		<scheduler doc:name="Scheduler" doc:id="c17122b3-da06-42b5-9e07-56d7eb9d265d" disallowConcurrentExecution="true" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="${scheduler.triggerFrequency}" timeUnit="SECONDS" />
+			</scheduling-strategy>
+		</scheduler>
+		<set-variable value="#[correlationId]" variableName="correlationId" doc:name="Correlation ID" doc:id="e9f0a1b2-c3d4-4567-8901-23456789abcd" />
+		<set-variable value="#[0]" variableName="rowsSent" doc:name="Rows sent (init)" doc:id="f0a1b2c3-d4e5-4678-9012-34567890bcde" />
+		<logger level="INFO" doc:name="Batch start" doc:id="b1a2c3d4-e5f6-7890-abcd-ef1234567890" message="#[%dw 2.0 output application/java --- &quot;[correlationId=&quot; ++ (vars.correlationId default &quot;n/a&quot;) ++ &quot;] scheduler tick | start batch&quot;]" />
+		<flow-ref doc:name="Read File Flow" doc:id="581da6ce-11ee-4cd1-bc7a-a45c0771d0bd" name="file_readSub_Flow" />
+		<flow-ref doc:name="Enrich Data Flow" doc:id="fbf968db-1460-4834-916c-1cd0beeec919" name="countries_data_enrichmentSub_Flow"/>
+		<flow-ref doc:name="Convert EUR Rates Flow" doc:id="98a30d43-05ba-4f66-a18d-a8e2eb26dae0" name="enforce_eur_rates_sub_flow"/>
+		<flow-ref doc:name="Treasury POST" doc:id="deadbeef-1111-4222-8333-444455556666" name="treasury_postSub_Flow" />
+		<logger level="INFO" doc:name="Batch summary" doc:id="cafebabe-2222-4333-8444-555566667777" message="#[%dw 2.0 output application/java --- do { var cid = vars.correlationId default &quot;n/a&quot; var read = vars.salesBatchSummary.rowCount default 0 var enriched = sizeOf(vars.salesRows default []) var sent = vars.rowsSent default 0 --- &quot;[correlationId=&quot; ++ cid ++ &quot;] batch summary | read=&quot; ++ (read as String) ++ &quot; | enriched=&quot; ++ (enriched as String) ++ &quot; | sent=&quot; ++ (sent as String) }]" />
+	</flow>
+</mule>

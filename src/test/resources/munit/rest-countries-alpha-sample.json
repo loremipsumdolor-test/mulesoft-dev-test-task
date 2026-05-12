@@ -1,0 +1,12 @@
+[
+  {
+    "cca2": "ES",
+    "name": { "common": "Spain" },
+    "region": "Europe"
+  },
+  {
+    "cca2": "FR",
+    "name": { "common": "France" },
+    "region": "Europe"
+  }
+]

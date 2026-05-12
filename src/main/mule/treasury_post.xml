@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<sub-flow name="treasury_postSub_Flow" doc:name="Treasury POST (sales batch)" doc:id="73fbd645-0284-48af-a554-3843779a426c" >
+		<try doc:name="Treasury HTTP" doc:id="f1e2d3c4-b5a6-4789-0123-456789abcdef" >
+			<until-successful maxRetries="2" millisBetweenRetries="1000" doc:name="Treasury retry" doc:id="a2b3c4d5-e6f7-4890-1234-567890abcdef" >
+				<http:request method="POST" doc:name="POST batch to Treasury" doc:id="b3c4d5e6-f7a8-4901-2345-67890abcdef0" config-ref="Treasury_Request_configuration" path="${apis.treasury.postPath}" outputMimeType="application/json" >
+					<http:body ><![CDATA[#[output application/json --- vars.salesRows default []]]]></http:body>
+					<http:headers ><![CDATA[#[output application/java --- {"Content-Type": "application/json"}]]]></http:headers>
+				</http:request>
+			</until-successful>
+			<set-variable value="#[%dw 2.0 output application/java --- sizeOf(vars.salesRows default [])]" variableName="rowsSent" doc:name="Rows sent count" doc:id="c4d5e6f7-a8b9-4012-3456-7890abcdef01" />
+			<logger level="INFO" doc:name="Treasury POST success" doc:id="d5e6f7a8-b9c0-4123-4567-890abcdef012" message="#[%dw 2.0 output application/java --- do { var cid = vars.correlationId default &quot;n/a&quot; var n = vars.rowsSent default 0 --- &quot;[correlationId=&quot; ++ cid ++ &quot;] Treasury POST success | rowsPosted=&quot; ++ (n as String) ++ &quot; | status=&quot; ++ ((attributes.statusCode default 0) as String) }]" />
+			<logger level="DEBUG" doc:name="Treasury response body (preview)" doc:id="e6f7a8b9-c0d1-4234-5678-90abcdef0123" message="#[%dw 2.0 output application/java --- do { var cid = vars.correlationId default &quot;n/a&quot; --- &quot;[correlationId=&quot; ++ cid ++ &quot;] Treasury response | &quot; ++ write(payload, &quot;application/json&quot;, {indent: false}) }]" />
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="f7a8b9c0-d1e2-4345-6789-0abcdef01234" >
+					<logger level="WARN" doc:name="Treasury POST failed" doc:id="a8b9c0d1-e2f3-4456-789a-bcdef0123456" message="#[%dw 2.0 output application/java --- &apos;[correlationId=&apos; ++ (vars.correlationId default &apos;n/a&apos;) ++ &apos;] Treasury POST failed | &apos; ++ (error.description default &apos;&apos;) ++ &apos; | type=&apos; ++ (error.errorType.namespace default &apos;&apos;) ++ &apos;:&apos; ++ (error.errorType.identifier default &apos;&apos;)]" />
+					<set-variable value="#[0]" variableName="rowsSent" doc:name="Rows sent zero" doc:id="b9c0d1e2-f3a4-4567-89ab-cdef01234567" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+</mule>

@@ -1,0 +1,21 @@
+sales:
+  inputDirectory: "${mule.home}/apps/${domain}/classes/data"
+  fileName: "sales.csv"
+
+scheduler:
+  triggerFrequency: "3600"
+
+apis:
+  restCountries:
+    host: "restcountries.com"
+    port: "443"
+    basePath: "/v3.1"
+    alphaFields: "cca2,name,region"
+  frankfurter:
+    host: "api.frankfurter.dev"
+    port: "443"
+    basePath: "/v2"
+  treasury:
+    host: "www.httpbin.org"
+    port: "443"
+    postPath: "/post"

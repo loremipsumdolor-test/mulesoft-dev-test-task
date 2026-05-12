@@ -1,0 +1,3 @@
+sale_id,sale_date,country_code,currency,amount_local
+S-001,2025-01-15,ES,EUR,100.00
+S-002,2025-01-16,FR,USD,200.00
