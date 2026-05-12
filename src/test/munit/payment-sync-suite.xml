@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- One suite file, several tests. NOT the full payment_sync_scheduler (no Scheduler/File); only sub-flows with seeded vars + HTTP mocks. -->
 <mule xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
 	xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
@@ -103,7 +102,6 @@
 		</munit:validation>
 	</munit:test>
 
-	<!-- Error / edge path: CSV has unknown country code (ZZ); API returns only ES — ZZ row stays null (like real REST Countries omitting invalid codes) -->
 	<munit:test name="countries-enrichment-unknown-code-not-in-api" description="Partial REST payload; unknown alpha-2 gets null country_name/region" doc:id="munit-countries-unknown" ignore="false">
 		<munit:behavior>
 			<munit-tools:mock-when processor="http:request" doc:name="Mock REST partial">
@@ -135,7 +133,6 @@
 		</munit:validation>
 	</munit:test>
 
-	<!-- Error path: Frankfurter HTTP fails (simulated); on-error-continue leaves empty FX map — non-EUR amounts null -->
 	<munit:test name="enforce-eur-rates-frankfurter-http-error" description="Mock Frankfurter HTTP failure (CONNECTIVITY); on-error-continue clears FX for non-EUR" doc:id="munit-fx-error" ignore="false">
 		<munit:behavior>
 			<munit-tools:mock-when processor="http:request" doc:name="Mock Frankfurter error">
